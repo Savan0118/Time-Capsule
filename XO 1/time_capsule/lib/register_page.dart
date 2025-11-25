@@ -1,9 +1,10 @@
-// This is register_page.dart
-
+// lib/register_page.dart
 // ignore_for_file: use_build_context_synchronously
 
 import 'package:flutter/material.dart';
 import 'signin_page.dart';
+import 'user_db.dart';
+import 'user_model.dart';
 
 class RegisterPage extends StatefulWidget {
   const RegisterPage({super.key});
@@ -17,6 +18,8 @@ class _RegisterPageState extends State<RegisterPage> {
   final TextEditingController _emailController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
   final TextEditingController _confirmPasswordController = TextEditingController();
+
+  bool _saving = false;
 
   @override
   Widget build(BuildContext context) {
@@ -83,27 +86,47 @@ class _RegisterPageState extends State<RegisterPage> {
                   }),
                   const SizedBox(height: 30),
 
-                  _buildButton("Register", () {
-                    if (_formKey.currentState!.validate()) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text(
-                            "Account created successfully! Please login.",
-                            style: TextStyle(fontSize: 16),
-                          ),
-                          backgroundColor: Colors.green,
-                          duration: Duration(milliseconds: 500),
-                        ),
-                      );
+                  _saving
+                      ? const CircularProgressIndicator()
+                      : _buildButton("Register", () async {
+                          if (!_formKey.currentState!.validate()) return;
 
-                      Future.delayed(const Duration(milliseconds: 500), () {
-                        Navigator.pushReplacement(
-                          context,
-                          _smoothRoute(const SignInPage()),
-                        );
-                      });
-                    }
-                  }),
+                          setState(() => _saving = true);
+
+                          final email = _emailController.text.trim();
+                          final password = _passwordController.text;
+
+                          try {
+                            // check if email exists
+                            final existing = await UserDB.instance.getUserByEmail(email);
+                            if (existing != null) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(content: Text('Email already registered'), backgroundColor: Colors.red),
+                              );
+                              setState(() => _saving = false);
+                              return;
+                            }
+
+                            final user = User(email: email, password: password);
+                            await UserDB.instance.createUser(user);
+
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(content: Text('Account created successfully! Please login.'), backgroundColor: Colors.green),
+                            );
+
+                            // small delay so user sees the snackbar
+                            await Future.delayed(const Duration(milliseconds: 600));
+                            if (!mounted) return;
+
+                            Navigator.pushReplacement(context, _smoothRoute(const SignInPage()));
+                          } catch (e) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(content: Text('Failed to create account'), backgroundColor: Colors.red),
+                            );
+                          } finally {
+                            if (mounted) setState(() => _saving = false);
+                          }
+                        }),
 
                   const SizedBox(height: 30),
 
@@ -132,8 +155,7 @@ class _RegisterPageState extends State<RegisterPage> {
     );
   }
 
-  Widget _buildTextField(
-      String label, bool isPassword, TextEditingController controller, String? Function(String?) validator) {
+  Widget _buildTextField(String label, bool isPassword, TextEditingController controller, String? Function(String?) validator) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [

@@ -1,11 +1,15 @@
-// ...existing code...
-import 'package:flutter/material.dart';
-import 'package:flutter/foundation.dart';
-import 'package:intl/intl.dart';
-import 'settings_page.dart';
-// ignore: unnecessary_import
+// profile_page.dart
+
+import 'dart:convert';
 import 'dart:typed_data';
+
+import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:intl/intl.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
+import 'settings_page.dart';
 
 class ProfilePage extends StatefulWidget {
   const ProfilePage({super.key});
@@ -15,6 +19,7 @@ class ProfilePage extends StatefulWidget {
 }
 
 class _ProfilePageState extends State<ProfilePage> {
+  // controllers
   final TextEditingController _usernameController = TextEditingController();
   final TextEditingController _nameController = TextEditingController();
   final TextEditingController _contactController = TextEditingController();
@@ -27,6 +32,19 @@ class _ProfilePageState extends State<ProfilePage> {
 
   Uint8List? _selectedImageBytes;
   final ImagePicker _picker = ImagePicker();
+
+  bool _loading = true;
+
+  // keys for SharedPreferences
+  static const _kUsername = 'profile_username';
+  static const _kName = 'profile_name';
+  static const _kContact = 'profile_contact';
+  static const _kDob = 'profile_dob';
+  static const _kBio = 'profile_bio';
+  static const _kCountryCode = 'profile_country_code';
+  static const _kFlag = 'profile_flag';
+  static const _kGender = 'profile_gender';
+  static const _kImage = 'profile_image_base64';
 
   final List<Map<String, String>> _countries = [
     {"name": "Afghanistan", "code": "+93", "flag": "🇦🇫"},
@@ -229,25 +247,105 @@ class _ProfilePageState extends State<ProfilePage> {
   void initState() {
     super.initState();
     _countryCodeController.text = "+91";
+    _loadProfile();
+  }
+
+  @override
+  void dispose() {
+    _usernameController.dispose();
+    _nameController.dispose();
+    _contactController.dispose();
+    _dobController.dispose();
+    _bioController.dispose();
+    _countryCodeController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _loadProfile() async {
+    setState(() => _loading = true);
+    final prefs = await SharedPreferences.getInstance();
+    _usernameController.text = prefs.getString(_kUsername) ?? '';
+    _nameController.text = prefs.getString(_kName) ?? '';
+    _contactController.text = prefs.getString(_kContact) ?? '';
+    _dobController.text = prefs.getString(_kDob) ?? '';
+    _bioController.text = prefs.getString(_kBio) ?? '';
+    _countryCodeController.text = prefs.getString(_kCountryCode) ?? '+91';
+    _selectedGender = prefs.getString(_kGender);
+    _currentFlag = prefs.getString(_kFlag) ?? '🇮🇳';
+
+    final imageBase64 = prefs.getString(_kImage);
+    if (imageBase64 != null && imageBase64.isNotEmpty) {
+      try {
+        _selectedImageBytes = base64Decode(imageBase64);
+      } catch (_) {
+        _selectedImageBytes = null;
+      }
+    }
+
+    setState(() => _loading = false);
+  }
+
+  Future<void> _saveProfile() async {
+    setState(() => _loading = true);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_kUsername, _usernameController.text.trim());
+    await prefs.setString(_kName, _nameController.text.trim());
+    await prefs.setString(_kContact, _contactController.text.trim());
+    await prefs.setString(_kDob, _dobController.text.trim());
+    await prefs.setString(_kBio, _bioController.text.trim());
+    await prefs.setString(_kCountryCode, _countryCodeController.text.trim());
+    if (_selectedGender != null) {
+      await prefs.setString(_kGender, _selectedGender!);
+    } else {
+      await prefs.remove(_kGender);
+    }
+    await prefs.setString(_kFlag, _currentFlag);
+
+    if (_selectedImageBytes != null) {
+      final base64Image = base64Encode(_selectedImageBytes!);
+      await prefs.setString(_kImage, base64Image);
+    } else {
+      await prefs.remove(_kImage);
+    }
+
+    setState(() => _loading = false);
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Profile saved'), duration: Duration(milliseconds: 800)),
+    );
+
+    // Navigate to settings page (replacement as before)
+    if (mounted) {
+      Navigator.pushReplacement(context, _smoothRoute(const SettingsPage()));
+    }
   }
 
   void _updateFlag(String input) {
-    final country = _countries.firstWhere(
-      (c) => c["code"] == input || c["name"]!.toLowerCase() == input.toLowerCase(),
+    final filter = input.trim().toLowerCase();
+    final found = _countries.firstWhere(
+      (c) =>
+          c["code"]!.toLowerCase() == filter ||
+          c["name"]!.toLowerCase() == filter ||
+          c["code"]!.toLowerCase().contains(filter) ||
+          c["name"]!.toLowerCase().contains(filter),
       orElse: () => {},
     );
-    setState(() {
-      _currentFlag = country["flag"] ?? "";
-      if (country.isNotEmpty) {
-        _countryCodeController.text = country["code"]!;
-      }
-    });
+
+    if (found.isNotEmpty) {
+      setState(() {
+        _currentFlag = found["flag"] ?? _currentFlag;
+        _countryCodeController.text = found["code"] ?? _countryCodeController.text;
+      });
+    } else {
+      // if user typed e.g. +1-242 or partial, just update flag only if exact match found
+      // do nothing otherwise (keep current flag)
+    }
   }
 
   Future<void> _selectDate(BuildContext context) async {
     DateTime? picked = await showDatePicker(
       context: context,
-      initialDate: DateTime(2000),
+      initialDate: DateTime.tryParse(_dobController.text) ?? DateTime(2000),
       firstDate: DateTime(1900),
       lastDate: DateTime.now(),
       builder: (context, child) {
@@ -272,19 +370,10 @@ class _ProfilePageState extends State<ProfilePage> {
 
   Future<void> _pickImage(ImageSource source) async {
     try {
-      // Use a single straightforward call but keep web/mobile handling safe.
       XFile? picked;
       if (kIsWeb) {
-        // On web, preferredCameraDevice isn't reliable; use basic call
-        picked = await _picker.pickImage(
-          source: source,
-          maxWidth: 1024,
-          maxHeight: 1024,
-          imageQuality: 85,
-        );
+        picked = await _picker.pickImage(source: source, maxWidth: 1024, maxHeight: 1024, imageQuality: 85);
       } else {
-        // On mobile/desktop, request camera explicitly when source == camera.
-        // preferredCameraDevice works on mobile.
         picked = await _picker.pickImage(
           source: source,
           maxWidth: 1024,
@@ -303,11 +392,8 @@ class _ProfilePageState extends State<ProfilePage> {
         }
       }
     } catch (e) {
-      // show brief feedback on failure
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Could not pick image')),
-        );
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Could not pick image')));
       }
     }
   }
@@ -323,7 +409,6 @@ class _ProfilePageState extends State<ProfilePage> {
               title: const Text('Choose from gallery'),
               onTap: () {
                 Navigator.of(ctx).pop();
-                // explicitly open gallery
                 _pickImage(ImageSource.gallery);
               },
             ),
@@ -332,7 +417,6 @@ class _ProfilePageState extends State<ProfilePage> {
               title: const Text('Take a photo'),
               onTap: () {
                 Navigator.of(ctx).pop();
-                // explicitly open camera (mobile will open native camera app)
                 _pickImage(ImageSource.camera);
               },
             ),
@@ -356,7 +440,6 @@ class _ProfilePageState extends State<ProfilePage> {
     );
   }
 
-  // Smooth transition route
   Route _smoothRoute(Widget page) {
     return PageRouteBuilder(
       transitionDuration: const Duration(milliseconds: 400),
@@ -372,6 +455,22 @@ class _ProfilePageState extends State<ProfilePage> {
           ),
         );
       },
+    );
+  }
+
+  Widget _buildTextField(String label, TextEditingController controller,
+      {TextInputType keyboardType = TextInputType.text, int maxLines = 1}) {
+    return TextField(
+      controller: controller,
+      keyboardType: keyboardType,
+      maxLines: maxLines,
+      readOnly: label == "Date of Birth",
+      decoration: InputDecoration(
+        labelText: label,
+        filled: true,
+        fillColor: Colors.grey[300],
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(5)),
+      ),
     );
   }
 
@@ -392,230 +491,201 @@ class _ProfilePageState extends State<ProfilePage> {
         ),
         centerTitle: true,
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.center,
-          children: [
-            // Photo section: tappable text opens picker; preview shown in white circular area
-            InkWell(
-              onTap: _showImageSourceActionSheet,
-              borderRadius: BorderRadius.circular(50),
+      body: _loading
+          ? const Center(child: CircularProgressIndicator())
+          : SingleChildScrollView(
+              padding: const EdgeInsets.all(20),
               child: Column(
+                crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
-                  Stack(
-                    alignment: Alignment.bottomRight,
-                    children: [
-                      Container(
-                        width: 80,
-                        height: 80,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          color: Colors.white,
-                          boxShadow: [
-                            BoxShadow(
-                              // ignore: deprecated_member_use
-                              color: Colors.black.withOpacity(0.08),
-                              blurRadius: 6,
-                              offset: const Offset(0, 2),
+                  // Photo section
+                  InkWell(
+                    onTap: _showImageSourceActionSheet,
+                    borderRadius: BorderRadius.circular(50),
+                    child: Column(
+                      children: [
+                        Stack(
+                          alignment: Alignment.bottomRight,
+                          children: [
+                            Container(
+                              width: 80,
+                              height: 80,
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                color: Colors.white,
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: Colors.black.withOpacity(0.08),
+                                    blurRadius: 6,
+                                    offset: const Offset(0, 2),
+                                  ),
+                                ],
+                              ),
+                              child: ClipOval(
+                                child: _selectedImageBytes != null
+                                    ? Image.memory(
+                                        _selectedImageBytes!,
+                                        width: 80,
+                                        height: 80,
+                                        fit: BoxFit.cover,
+                                      )
+                                    : Center(
+                                        child: Text(
+                                          "Photo",
+                                          style: TextStyle(fontSize: 14, color: Colors.black87),
+                                        ),
+                                      ),
+                              ),
+                            ),
+                            Container(
+                              width: 28,
+                              height: 28,
+                              margin: const EdgeInsets.only(right: 2, bottom: 2),
+                              decoration: BoxDecoration(
+                                color: Colors.white,
+                                shape: BoxShape.circle,
+                                border: Border.all(color: Colors.grey.shade300, width: 1),
+                              ),
+                              child: Icon(Icons.camera_alt, size: 16, color: Colors.grey.shade800),
                             ),
                           ],
                         ),
-                        child: ClipOval(
-                          child: _selectedImageBytes != null
-                              ? Image.memory(
-                                  _selectedImageBytes!,
-                                  width: 80,
-                                  height: 80,
-                                  fit: BoxFit.cover,
-                                )
-                              : Center(
-                                  child: Text(
-                                    "Photo",
-                                    style: TextStyle(fontSize: 14, color: Colors.black87),
-                                  ),
-                                ),
+                        const SizedBox(height: 8),
+                        Text(
+                          "(choose a picture)",
+                          style: TextStyle(
+                            color: Colors.blue.shade800,
+                            decoration: TextDecoration.underline,
+                            fontSize: 14,
+                          ),
                         ),
-                      ),
-                      // small camera icon overlay
-                      Container(
-                        width: 28,
-                        height: 28,
-                        margin: const EdgeInsets.only(right: 2, bottom: 2),
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          shape: BoxShape.circle,
-                          border: Border.all(color: Colors.grey.shade300, width: 1),
-                        ),
-                        child: Icon(Icons.camera_alt, size: 16, color: Colors.grey.shade800),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    "(choose a picture)",
-                    style: TextStyle(
-                      color: Colors.blue.shade800,
-                      decoration: TextDecoration.underline,
-                      fontSize: 14,
+                      ],
                     ),
                   ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 10),
-            // Username field with label
-            _buildTextField("Username", _usernameController),
-            const SizedBox(height: 20),
+                  const SizedBox(height: 10),
+                  // Username
+                  _buildTextField("Username", _usernameController),
+                  const SizedBox(height: 20),
 
-            // Name
-            _buildTextField("Name", _nameController),
-            const SizedBox(height: 10),
+                  // Name
+                  _buildTextField("Name", _nameController),
+                  const SizedBox(height: 10),
 
-            // Country + Contact
-            Row(
-              children: [
-                SizedBox(
-                  width: 150,
-                  child: TextField(
-                    controller: _countryCodeController,
-                    decoration: InputDecoration(
-                      filled: true,
-                      fillColor: Colors.grey[300],
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(5)),
-                      prefixText: _currentFlag.isNotEmpty ? '$_currentFlag ' : null,
-                      suffixIcon: PopupMenuButton<String>(
-                        icon: const Icon(Icons.arrow_drop_down),
-                        onSelected: (value) => _updateFlag(value),
-                        itemBuilder: (context) {
-                          String filter = _countryCodeController.text.toLowerCase();
-                          final filteredCountries = _countries.where(
-                            (c) =>
-                                c["code"]!.contains(filter) ||
-                                c["name"]!.toLowerCase().contains(filter),
-                          ).toList();
-                          return filteredCountries.map((c) {
-                            return PopupMenuItem<String>(
-                              value: c["code"]!,
-                              child: Row(
-                                children: [
-                                  Text(c["flag"]!, style: const TextStyle(fontSize: 18)),
-                                  const SizedBox(width: 6),
-                                  Text('${c["name"]} (${c["code"]})'),
-                                ],
-                              ),
-                            );
-                          }).toList();
-                        },
-                      ),
-                    ),
-                    keyboardType: TextInputType.text,
-                    onChanged: (value) => _updateFlag(value),
-                  ),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: _buildTextField("Contact No", _contactController, keyboardType: TextInputType.phone),
-                ),
-              ],
-            ),
-            const SizedBox(height: 10),
-
-            // DOB
-            GestureDetector(
-              onTap: () => _selectDate(context),
-              child: AbsorbPointer(
-                child: _buildTextField("Date of Birth", _dobController),
-              ),
-            ),
-            const SizedBox(height: 20),
-
-            // Gender
-            Align(
-              alignment: Alignment.centerLeft,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text("Gender", style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+                  // Country + Contact
                   Row(
                     children: [
-                      Radio<String>(
-                        value: "Male",
-                        // ignore: deprecated_member_use
-                        groupValue: _selectedGender,
-                        activeColor: const Color(0xFF8B6B4A),
-                        // ignore: deprecated_member_use
-                        onChanged: (value) {
-                          setState(() {
-                            _selectedGender = value;
-                          });
-                        },
+                      SizedBox(
+                        width: 150,
+                        child: TextField(
+                          controller: _countryCodeController,
+                          decoration: InputDecoration(
+                            filled: true,
+                            fillColor: Colors.grey[300],
+                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(5)),
+                            prefixText: _currentFlag.isNotEmpty ? '$_currentFlag ' : null,
+                            suffixIcon: PopupMenuButton<String>(
+                              icon: const Icon(Icons.arrow_drop_down),
+                              onSelected: (value) {
+                                _updateFlag(value);
+                              },
+                              itemBuilder: (context) {
+                                String filter = _countryCodeController.text.toLowerCase();
+                                final filteredCountries = _countries.where(
+                                  (c) =>
+                                      c["code"]!.toLowerCase().contains(filter) ||
+                                      c["name"]!.toLowerCase().contains(filter),
+                                ).toList();
+                                return filteredCountries.map((c) {
+                                  return PopupMenuItem<String>(
+                                    value: c["code"]!,
+                                    child: Row(
+                                      children: [
+                                        Text(c["flag"]!, style: const TextStyle(fontSize: 18)),
+                                        const SizedBox(width: 6),
+                                        Text('${c["name"]} (${c["code"]})'),
+                                      ],
+                                    ),
+                                  );
+                                }).toList();
+                              },
+                            ),
+                          ),
+                          keyboardType: TextInputType.text,
+                          onChanged: (value) => _updateFlag(value),
+                        ),
                       ),
-                      const Text("Male"),
-                      const SizedBox(width: 20),
-                      Radio<String>(
-                        value: "Female",
-                        // ignore: deprecated_member_use
-                        groupValue: _selectedGender,
-                        activeColor: const Color(0xFF8B6B4A),
-                        // ignore: deprecated_member_use
-                        onChanged: (value) {
-                          setState(() {
-                            _selectedGender = value;
-                          });
-                        },
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: _buildTextField("Contact No", _contactController, keyboardType: TextInputType.phone),
                       ),
-                      const Text("Female"),
                     ],
                   ),
+                  const SizedBox(height: 10),
+
+                  // DOB
+                  GestureDetector(
+                    onTap: () => _selectDate(context),
+                    child: AbsorbPointer(
+                      child: _buildTextField("Date of Birth", _dobController),
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+
+                  // Gender
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text("Gender", style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+                        Row(
+                          children: [
+                            Radio<String>(
+                              value: "Male",
+                              groupValue: _selectedGender,
+                              activeColor: const Color(0xFF8B6B4A),
+                              onChanged: (value) {
+                                setState(() {
+                                  _selectedGender = value;
+                                });
+                              },
+                            ),
+                            const Text("Male"),
+                            const SizedBox(width: 20),
+                            Radio<String>(
+                              value: "Female",
+                              groupValue: _selectedGender,
+                              activeColor: const Color(0xFF8B6B4A),
+                              onChanged: (value) {
+                                setState(() {
+                                  _selectedGender = value;
+                                });
+                              },
+                            ),
+                            const Text("Female"),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+
+                  // Bio
+                  _buildTextField("Bio", _bioController, maxLines: 3),
+                  const SizedBox(height: 20),
+
+                  // Save
+                  ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF8B6B4A),
+                      minimumSize: const Size(double.infinity, 50),
+                    ),
+                    onPressed: _saveProfile,
+                    child: const Text("Save", style: TextStyle(color: Color.fromARGB(255, 0, 0, 0), fontSize: 16, fontWeight: FontWeight.bold)),
+                  )
                 ],
               ),
             ),
-            const SizedBox(height: 10),
-
-            // Bio
-            _buildTextField("Bio", _bioController, maxLines: 3),
-            const SizedBox(height: 20),
-
-            // Save
-            ElevatedButton(
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF8B6B4A),
-                minimumSize: const Size(double.infinity, 50),
-              ),
-              onPressed: () {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text("Profile Saved"),
-                    duration: Duration(milliseconds: 700), // Reduced duration
-                  ),
-                );
-                Navigator.pushReplacement(
-                  context,
-                  _smoothRoute(const SettingsPage()),
-                );
-              },
-              child: const Text("Save", style: TextStyle(color: Color.fromARGB(255, 0, 0, 0), fontSize: 16, fontWeight: FontWeight.bold)),
-            )
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildTextField(String label, TextEditingController controller,
-      {TextInputType keyboardType = TextInputType.text, int maxLines = 1}) {
-    return TextField(
-      controller: controller,
-      keyboardType: keyboardType,
-      maxLines: maxLines,
-      readOnly: label == "Date of Birth",
-      decoration: InputDecoration(
-        labelText: label,
-        filled: true,
-        fillColor: Colors.grey[300],
-        border: OutlineInputBorder(borderRadius: BorderRadius.circular(5)),
-      ),
     );
   }
 }

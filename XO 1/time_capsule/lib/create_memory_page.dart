@@ -58,7 +58,7 @@ class _CreateMemoryPageState extends State<CreateMemoryPage> {
         data: Theme.of(context).copyWith(
           colorScheme: const ColorScheme.light(
             primary: Color(0xFF8B6B4A),
-            onPrimary: Colors.white,
+            onPrimary: Color.fromARGB(255, 124, 73, 73),
             onSurface: Colors.black,
           ),
         ),
