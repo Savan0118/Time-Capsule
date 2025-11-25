@@ -1,4 +1,20 @@
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="${applicationId}">
+
+    <!--
+      Permissions for camera and reading/writing images from device storage.
+      NOTE:
+        - On Android 13+ you should prefer `android.permission.READ_MEDIA_IMAGES` for image access.
+        - WRITE_EXTERNAL_STORAGE is deprecated on Android 11+; scoped storage is recommended.
+        - You still must request these at runtime in Flutter (use image_picker which requests permissions,
+          or use permission_handler to request them explicitly).
+    -->
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
+    <!-- Android 13+ media permission -->
+    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
+
     <application
         android:label="time_capsule"
         android:name="${applicationName}"
@@ -31,6 +47,7 @@
             android:name="flutterEmbedding"
             android:value="2" />
     </application>
+
     <!-- Required to query activities that can process text, see:
          https://developer.android.com/training/package-visibility and
          https://developer.android.com/reference/android/content/Intent#ACTION_PROCESS_TEXT.

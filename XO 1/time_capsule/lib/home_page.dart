@@ -1,174 +1,342 @@
-// This is home_page.dart
-
+import 'dart:io';
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart'; // For formatting date
-import 'search_page.dart';
-import 'settings_page.dart';
-import 'mood_page.dart';
+import 'package:intl/intl.dart';
 
-class HomePage extends StatelessWidget {
+import 'db_helper.dart';
+import 'memory_model.dart';
+import 'create_memory_page.dart';
+
+class HomePage extends StatefulWidget {
   const HomePage({super.key});
 
-  final List<Map<String, String>> memories = const [
-    // You can add memory items here
-  ];
+  @override
+  State<HomePage> createState() => _HomePageState();
+}
+
+class _HomePageState extends State<HomePage> {
+  final DBHelper _db = DBHelper();
+  List<Memory> _memories = [];
+  bool _loading = true;
 
   @override
-  Widget build(BuildContext context) {
-    String todayDate = DateFormat('EEEE, MMM d, yyyy').format(DateTime.now());
+  void initState() {
+    super.initState();
+    _loadMemories();
+  }
 
-    return Scaffold(
-      backgroundColor: const Color(0xFFD2B48C),
-      body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: const [
-                  Icon(Icons.hourglass_bottom, size: 36, color: Colors.black87),
-                  SizedBox(width: 10),
-                  Text(
-                    "Time Capsule",
-                    style: TextStyle(
-                      fontSize: 34,
-                      fontFamily: "DancingScript", // Fancy Script font
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 8),
-              const Text(
-                "Your mood capsules await!",
-                style: TextStyle(
-                  fontSize: 22,
-                  fontWeight: FontWeight.w500,
-                  fontFamily: "Fancy Script", // Fancy Script font
-                ),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                "Date: $todayDate",
-                style: const TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w400,
-                  fontFamily: "Arial",
-                  color: Colors.black54,
-                ),
-              ),
-              const SizedBox(height: 20),
-              Expanded(
-                child: ListView.builder(
-                  itemCount: memories.length,
-                  itemBuilder: (context, index) {
-                    final memory = memories[index];
-                    return Card(
-                      margin: const EdgeInsets.only(bottom: 16),
-                      color: Color(int.parse(memory["color"]!)),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(15),
-                      ),
-                      elevation: 5,
-                      child: ListTile(
-                        contentPadding: const EdgeInsets.symmetric(
-                          horizontal: 20,
-                          vertical: 15,
-                        ),
-                        title: Text(
-                          memory["title"]!,
-                          style: const TextStyle(
-                            fontSize: 20,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                        subtitle: Text(
-                          memory["date"]!,
-                          style: const TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w500,
-                          ),
-                        ),
-                        trailing: Wrap(
-                          spacing: 12,
-                          children: [
-                            IconButton(
-                              icon: const Icon(Icons.edit, color: Colors.black87),
-                              onPressed: () {},
-                            ),
-                            IconButton(
-                              icon: const Icon(Icons.delete, color: Colors.black87),
-                              onPressed: () {},
-                            ),
-                          ],
-                        ),
-                      ),
-                    );
-                  },
-                ),
-              ),
-            ],
-          ),
-        ),
+  Future<void> _loadMemories() async {
+    setState(() => _loading = true);
+    final items = await _db.getAllMemories();
+    setState(() {
+      _memories = items;
+      _loading = false;
+    });
+  }
+
+  Future<void> _deleteMemory(int id, List<String>? photoPaths) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('Delete memory'),
+        content: const Text('Are you sure you want to delete this memory?'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
+          TextButton(onPressed: () => Navigator.pop(context, true), child: const Text('Delete')),
+        ],
       ),
-      bottomNavigationBar: BottomNavigationBar(
-        backgroundColor: const Color(0xFFB98C65),
-        selectedItemColor: Colors.black,
-        unselectedItemColor: Colors.black54,
-        showSelectedLabels: false,
-        showUnselectedLabels: false,
-        onTap: (index) {
-          if (index == 0) {
-            Navigator.push(
-              context,
-              _smoothRoute(const SearchPage()),
-            );
-          } else if (index == 1) {
-            Navigator.push(
-              context,
-              _smoothRoute(const MoodPage()), // Navigate to MoodPage
-            );
-          } else if (index == 2) {
-            Navigator.push(
-              context,
-              _smoothRoute(const SettingsPage()),
-            );
+    );
+    if (confirmed != true) return;
+
+    try {
+      await _db.deleteMemory(id);
+      if (photoPaths != null && photoPaths.isNotEmpty) {
+        for (final path in photoPaths) {
+          try {
+            final f = File(path);
+            if (await f.exists()) {
+              await f.delete();
+            }
+          } catch (_) {
+            // ignore individual file delete errors
           }
-        },
-        items: const [
-          BottomNavigationBarItem(
-            icon: Icon(Icons.search, size: 28, color: Colors.black),
-            label: "Search",
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.add_box, size: 28, color: Colors.black),
-            label: "Add",
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.settings, size: 28, color: Colors.black),
-            label: "Settings",
+        }
+      }
+      await _loadMemories();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Memory deleted')));
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Failed to delete memory')));
+      }
+    }
+  }
+
+  Future<void> _editMemory(Memory memory) async {
+    final titleController = TextEditingController(text: memory.title);
+    final noteController = TextEditingController(text: memory.note);
+
+    final saved = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('Edit memory'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(controller: titleController, decoration: const InputDecoration(labelText: 'Title')),
+            TextField(controller: noteController, decoration: const InputDecoration(labelText: 'Note')),
+          ],
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
+          TextButton(
+            onPressed: () async {
+              final newTitle = titleController.text.trim();
+              final newNote = noteController.text.trim();
+              final updated = Memory(
+                id: memory.id,
+                title: newTitle,
+                note: newNote,
+                mood: memory.mood,
+                photoPaths: memory.photoPaths,
+                createdAt: memory.createdAt,
+              );
+              await _db.updateMemory(updated);
+              Navigator.pop(context, true);
+            },
+            child: const Text('Save'),
           ),
         ],
       ),
     );
+
+    if (saved == true) {
+      await _loadMemories();
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Memory updated')));
+    }
   }
 
-  Route _smoothRoute(Widget page) {
-    return PageRouteBuilder(
-      transitionDuration: const Duration(milliseconds: 400),
-      pageBuilder: (_, __, ___) => page,
-      transitionsBuilder: (_, animation, __, child) {
-        return FadeTransition(
-          opacity: animation,
-          child: ScaleTransition(
-            scale: Tween<double>(begin: 0.95, end: 1.0).animate(
-              CurvedAnimation(parent: animation, curve: Curves.easeOut),
+  String _formatDate(String? value) {
+    if (value == null || value.isEmpty) return '';
+    try {
+      final dt = DateFormat('yyyy-MM-dd HH:mm:ss').parse(value);
+      return DateFormat('dd MMM yyyy').format(dt);
+    } catch (_) {
+      return value;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Memories'),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.add),
+            onPressed: () async {
+              await Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const CreateMemoryPage(mood: '')),
+              );
+              await _loadMemories();
+            },
+          )
+        ],
+      ),
+      body: _loading
+          ? const Center(child: CircularProgressIndicator())
+          : _memories.isEmpty
+              ? const Center(child: Text('No memories yet'))
+              : Padding(
+                  padding: const EdgeInsets.all(8.0),
+                  child: GridView.builder(
+                    itemCount: _memories.length,
+                    gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                      crossAxisCount: 2,
+                      childAspectRatio: 1,
+                      crossAxisSpacing: 8,
+                      mainAxisSpacing: 8,
+                    ),
+                    itemBuilder: (context, index) {
+                      final m = _memories[index];
+
+                      return InkWell(
+                        onTap: () async {
+                          // Navigate to view page using named route if available,
+                          // otherwise push the route directly using constructor.
+                          // Try named route first - this requires your main.dart to handle '/view' with Memory argument.
+                          final result = await Navigator.pushNamed(context, '/view', arguments: m);
+                          // If named route wasn't set up, fallback to direct push:
+                          if (result == null) {
+                            await Navigator.push(
+                              context,
+                              MaterialPageRoute(builder: (_) => ViewFallbackPage(memory: m)),
+                            );
+                          }
+                          await _loadMemories();
+                        },
+                        child: Card(
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                          clipBehavior: Clip.hardEdge,
+                          child: Column(
+                            children: [
+                              Expanded(
+                                child: Stack(
+                                  fit: StackFit.expand,
+                                  children: [
+                                    // Use the getter photoPath to display the first image if available
+                                    if (m.photoPath != null && m.photoPath!.isNotEmpty && File(m.photoPath!).existsSync())
+                                      Image.file(File(m.photoPath!), fit: BoxFit.cover)
+                                    else
+                                      Container(
+                                        color: Colors.grey[200],
+                                        child: const Center(child: Icon(Icons.photo, size: 48)),
+                                      ),
+                                    Positioned(
+                                      left: 8,
+                                      top: 8,
+                                      child: Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                        decoration: BoxDecoration(color: Colors.black54, borderRadius: BorderRadius.circular(6)),
+                                        child: Text(
+                                          _formatDate(m.createdAt),
+                                          style: const TextStyle(color: Colors.white, fontSize: 12),
+                                        ),
+                                      ),
+                                    ),
+                                    Positioned(
+                                      right: 8,
+                                      top: 8,
+                                      child: Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          IconButton(
+                                            icon: const Icon(Icons.edit, size: 20, color: Colors.white),
+                                            onPressed: () => _editMemory(m),
+                                            tooltip: 'Edit',
+                                          ),
+                                          IconButton(
+                                            icon: const Icon(Icons.delete, size: 20, color: Colors.white),
+                                            onPressed: () => _deleteMemory(m.id!, m.photoPaths),
+                                            tooltip: 'Delete',
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              Padding(
+                                padding: const EdgeInsets.all(8.0),
+                                child: Row(
+                                  children: [
+                                    Expanded(
+                                      child: Text(
+                                        m.title ?? '',
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: const TextStyle(fontWeight: FontWeight.bold),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Text(
+                                      m.mood ?? '',
+                                      style: const TextStyle(fontSize: 12, color: Colors.grey),
+                                    )
+                                  ],
+                                ),
+                              )
+                            ],
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+    );
+  }
+}
+
+/// Fallback view page in case named route '/view' is not configured.
+/// You can remove this class if you already registered '/view' in main.dart.
+class ViewFallbackPage extends StatelessWidget {
+  final Memory memory;
+  const ViewFallbackPage({super.key, required this.memory});
+
+  String _formatDate(String? value) {
+    if (value == null || value.isEmpty) return '';
+    try {
+      final dt = DateFormat('yyyy-MM-dd HH:mm:ss').parse(value);
+      return DateFormat('dd MMM, yyyy').format(dt);
+    } catch (_) {
+      return value ?? '';
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final title = memory.title ?? '';
+    final note = memory.note ?? '';
+    final dateStr = _formatDate(memory.createdAt);
+
+    return Scaffold(
+      backgroundColor: const Color(0xFFDDF3F9),
+      body: SafeArea(
+        child: Column(
+          children: [
+            SizedBox(
+              height: 220,
+              child: Stack(
+                children: [
+                  if (memory.photoPath != null && memory.photoPath!.isNotEmpty && File(memory.photoPath!).existsSync())
+                    Image.file(File(memory.photoPath!), fit: BoxFit.cover, width: double.infinity)
+                  else
+                    Container(color: Colors.grey[200], child: const Center(child: Icon(Icons.photo, size: 48))),
+                  Positioned(
+                    left: 12,
+                    top: 12,
+                    child: Material(
+                      color: Colors.white70,
+                      shape: const CircleBorder(),
+                      child: IconButton(
+                        icon: const Icon(Icons.arrow_back),
+                        onPressed: () => Navigator.pop(context),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             ),
-            child: child,
-          ),
-        );
-      },
+            const SizedBox(height: 12),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 18),
+              child: Column(
+                children: [
+                  Text(title, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold), textAlign: TextAlign.center),
+                  const SizedBox(height: 8),
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.symmetric(vertical: 8),
+                    decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(8)),
+                    child: Text(dateStr, textAlign: TextAlign.center, style: const TextStyle(color: Colors.black54)),
+                  ),
+                  const SizedBox(height: 12),
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(8)),
+                    child: Text(
+                      note.isEmpty ? 'No additional notes.' : note,
+                      style: const TextStyle(fontSize: 14, height: 1.4),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

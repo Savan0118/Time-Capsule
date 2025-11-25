@@ -1,12 +1,15 @@
-// create_memory_page.dart
-
+import 'dart:io';
 import 'dart:typed_data';
-import 'dart:io' show File;
 import 'dart:math';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:path/path.dart' as p;
+
+import 'db_helper.dart';
+import 'memory_model.dart';
 import 'mood_themes.dart';
 
 class CreateMemoryPage extends StatefulWidget {
@@ -27,8 +30,8 @@ class _CreateMemoryPageState extends State<CreateMemoryPage> {
 
   late final PageController _pageController;
   int _currentPage = 0;
+  bool _saving = false;
 
-  // Standard field height to match Title / Date fields and Add-photos placeholder
   static const double _fieldHeight = 56.0;
 
   @override
@@ -41,7 +44,7 @@ class _CreateMemoryPageState extends State<CreateMemoryPage> {
   void dispose() {
     _titleController.dispose();
     _textController.dispose();
-    _pageController.dispose();
+    _page_controller_or_init().dispose();
     super.dispose();
   }
 
@@ -173,8 +176,8 @@ class _CreateMemoryPageState extends State<CreateMemoryPage> {
   void _safeAnimateToIndex(int index) {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       Future.delayed(const Duration(milliseconds: 60), () {
-        if (_pageController.hasClients && index >= 0 && index < _selectedImages.length) {
-          _pageController.animateToPage(index, duration: const Duration(milliseconds: 300), curve: Curves.easeOut);
+        if (_page_controller_or_init().hasClients && index >= 0 && index < _selectedImages.length) {
+          _page_controller_or_init().animateToPage(index, duration: const Duration(milliseconds: 300), curve: Curves.easeOut);
         }
       });
     });
@@ -228,11 +231,11 @@ class _CreateMemoryPageState extends State<CreateMemoryPage> {
       _selectedImages.removeAt(index);
       if (_selectedImages.isEmpty) {
         _currentPage = 0;
-        if (_pageController.hasClients) _pageController.jumpToPage(0);
+        if (_page_controller_or_init().hasClients) _page_controller_or_init().jumpToPage(0);
       } else if (_currentPage >= _selectedImages.length) {
         final last = _selectedImages.length - 1;
         _currentPage = last;
-        if (_pageController.hasClients) _pageController.animateToPage(last, duration: const Duration(milliseconds: 250), curve: Curves.easeOut);
+        if (_page_controller_or_init().hasClients) _page_controller_or_init().animateToPage(last, duration: const Duration(milliseconds: 250), curve: Curves.easeOut);
       }
     });
   }
@@ -240,30 +243,23 @@ class _CreateMemoryPageState extends State<CreateMemoryPage> {
   void selectImageAt(int index) {
     if (index < 0 || index >= _selectedImages.length) return;
     setState(() => _currentPage = index);
-    if (_pageController.hasClients) _pageController.animateToPage(index, duration: const Duration(milliseconds: 300), curve: Curves.easeOut);
+    if (_page_controller_or_init().hasClients) _page_controller_or_init().animateToPage(index, duration: const Duration(milliseconds: 300), curve: Curves.easeOut);
   }
 
   Widget _buildSquareCarousel(BuildContext context) {
     final screenWidth = MediaQuery.of(context).size.width;
-
-    // card uses 92% width on mobile (keeps square) clamped to max for tablets
     final double cardWidth = min(screenWidth * 0.92, 420);
     final double cardSize = cardWidth;
-
-    // thumbnail sizing responsive to screen width
     final double thumbWidth = (screenWidth * 0.18).clamp(60.0, 110.0);
     final double thumbHeight = thumbWidth * 0.72;
-
-    // + button size responsive
     final double plusSize = (screenWidth * 0.085).clamp(34.0, 44.0);
 
-    // If no images: show placeholder button that matches field height
     if (_selectedImages.isEmpty) {
       return InkWell(
         onTap: () => _showImageOptions(insertAfter: null),
         borderRadius: BorderRadius.circular(12),
         child: Container(
-          height: _fieldHeight, // same height as TextField
+          height: _fieldHeight,
           padding: const EdgeInsets.symmetric(horizontal: 14),
           decoration: BoxDecoration(color: Colors.grey[300], borderRadius: BorderRadius.circular(12)),
           child: Row(
@@ -283,20 +279,16 @@ class _CreateMemoryPageState extends State<CreateMemoryPage> {
       );
     }
 
-    // When images exist: show big square card and a responsive thumbnail row
     return Column(
       children: [
         SizedBox(
           height: cardSize,
           child: PageView.builder(
-            controller: _pageController,
+            controller: _page_controller_or_init(),
             itemCount: _selectedImages.length,
             onPageChanged: (p) => setState(() => _currentPage = p),
             itemBuilder: (context, index) {
               final bytes = _selectedImages[index];
-
-              // IMPORTANT: build the Card with an internal Stack so the delete button
-              // is always inside the card bounds (won't appear outside).
               return Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
                 child: Center(
@@ -311,15 +303,12 @@ class _CreateMemoryPageState extends State<CreateMemoryPage> {
                         child: Stack(
                           fit: StackFit.expand,
                           children: [
-                            // the image (fills the card)
                             Image.memory(
                               bytes,
                               fit: BoxFit.cover,
                               gaplessPlayback: true,
                               errorBuilder: (c, e, s) => const Center(child: Icon(Icons.broken_image)),
                             ),
-
-                            // delete button INSIDE the card (top-right)
                             Positioned(
                               top: 10,
                               right: 10,
@@ -346,10 +335,7 @@ class _CreateMemoryPageState extends State<CreateMemoryPage> {
             },
           ),
         ),
-
         const SizedBox(height: 12),
-
-        // Thumbnail row: last item is a single + button
         SizedBox(
           height: thumbHeight + 12,
           child: ListView.separated(
@@ -359,7 +345,6 @@ class _CreateMemoryPageState extends State<CreateMemoryPage> {
             separatorBuilder: (_, __) => SizedBox(width: max(8, screenWidth * 0.02)),
             itemBuilder: (context, idx) {
               if (idx == _selectedImages.length) {
-                // single + button at the end
                 return Center(
                   child: GestureDetector(
                     onTap: () => _showImageOptions(insertAfter: _selectedImages.isEmpty ? null : _selectedImages.length - 1),
@@ -420,19 +405,76 @@ class _CreateMemoryPageState extends State<CreateMemoryPage> {
 
   PageController _page_controller_or_init() => _pageController;
 
-  Route _smoothRoute(Widget page) => PageRouteBuilder(
-        transitionDuration: const Duration(milliseconds: 400),
-        pageBuilder: (_, __, ___) => page,
-        transitionsBuilder: (_, animation, __, child) {
-          return FadeTransition(
-            opacity: animation,
-            child: ScaleTransition(
-              scale: Tween<double>(begin: 0.95, end: 1.0).animate(CurvedAnimation(parent: animation, curve: Curves.easeOut)),
-              child: child,
-            ),
-          );
-        },
+  Future<List<String>> _writeSelectedImagesToFiles() async {
+    final docsDir = await getApplicationDocumentsDirectory();
+    final imagesDir = Directory(p.join(docsDir.path, 'memory_images'));
+    if (!await imagesDir.exists()) {
+      await imagesDir.create(recursive: true);
+    }
+
+    final List<String> paths = [];
+    for (var i = 0; i < _selectedImages.length; i++) {
+      final bytes = _selectedImages[i];
+      final fileName = '${DateTime.now().millisecondsSinceEpoch}_$i.jpg';
+      final pathStr = p.join(imagesDir.path, fileName);
+      final file = File(pathStr);
+      await file.writeAsBytes(bytes);
+      paths.add(pathStr);
+    }
+    return paths;
+  }
+
+  Future<void> _saveTitleDateAndImagesToDb() async {
+    final title = _titleController.text.trim();
+    final note = _textController.text.trim();
+    final DateTime dateToSave = _selectedDate ?? DateTime.now();
+
+    if (title.isEmpty) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Please enter a title')));
+      return;
+    }
+
+    setState(() => _saving = true);
+
+    try {
+      List<String>? savedImagePaths;
+      if (_selectedImages.isNotEmpty) {
+        savedImagePaths = await _writeSelectedImagesToFiles();
+      } else {
+        savedImagePaths = <String>[];
+      }
+
+      final createdAtStr = DateFormat('yyyy-MM-dd HH:mm:ss').format(dateToSave);
+
+      final memory = Memory(
+        title: title,
+        note: note,
+        mood: widget.mood,
+        photoPaths: savedImagePaths,
+        createdAt: createdAtStr,
       );
+
+      final db = DBHelper();
+      await db.insertMemory(memory);
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Memory saved')));
+        _titleController.clear();
+        _textController.clear();
+        setState(() {
+          _selectedDate = null;
+          _selectedImages.clear();
+          _currentPage = 0;
+          if (_page_controller_or_init().hasClients) _page_controller_or_init().jumpToPage(0);
+        });
+        Navigator.pop(context);
+      }
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Failed to save memory')));
+    } finally {
+      setState(() => _saving = false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -454,7 +496,6 @@ class _CreateMemoryPageState extends State<CreateMemoryPage> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            // Title field (fixed height to match add-photos placeholder)
             SizedBox(
               height: _fieldHeight,
               child: TextField(
@@ -469,12 +510,8 @@ class _CreateMemoryPageState extends State<CreateMemoryPage> {
               ),
             ),
             const SizedBox(height: 12),
-
-            // Add photos / carousel
             GestureDetector(onTap: () => _showImageOptions(insertAfter: null), child: _buildSquareCarousel(context)),
             const SizedBox(height: 12),
-
-            // Date field (same height)
             GestureDetector(
               onTap: () => _pickDate(context),
               child: AbsorbPointer(
@@ -493,7 +530,6 @@ class _CreateMemoryPageState extends State<CreateMemoryPage> {
               ),
             ),
             const SizedBox(height: 12),
-
             TextField(
               controller: _textController,
               maxLines: 6,
@@ -505,20 +541,18 @@ class _CreateMemoryPageState extends State<CreateMemoryPage> {
               ),
             ),
             const SizedBox(height: 16),
-
-            ElevatedButton(
-              onPressed: () {
-                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Memory created')));
-                Navigator.pop(context);
-              },
-              style: ElevatedButton.styleFrom(
-                backgroundColor: theme.bottomNavColor,
-                foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(horizontal: 60, vertical: 14),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-              ),
-              child: const Text("Create", style: TextStyle(fontSize: 18)),
-            ),
+            _saving
+                ? const CircularProgressIndicator()
+                : ElevatedButton(
+                    onPressed: _saveTitleDateAndImagesToDb,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: theme.bottomNavColor,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(horizontal: 60, vertical: 14),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    ),
+                    child: const Text("Create", style: TextStyle(fontSize: 18)),
+                  ),
           ],
         ),
       ),

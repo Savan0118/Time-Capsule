@@ -9,11 +9,17 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
+  
+  sqflite: ^2.2.8+5
+  path_provider: ^2.0.15
+  path: ^1.8.3
+  image_picker: ^0.8.7+6  # if not already present
+  intl: ^0.18.1 
 
-  intl: ^0.18.0
 
 
-  image_picker: ^1.1.1
+
+
 
 
 dev_dependencies:
