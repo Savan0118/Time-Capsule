@@ -21,6 +21,7 @@ class MoodPage extends StatelessWidget {
           fit: BoxFit.scaleDown,
           child: const Text(
             "How's your mood right now?",
+            
             textAlign: TextAlign.left,
             style: TextStyle(
               color: Colors.black,
