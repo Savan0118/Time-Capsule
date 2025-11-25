@@ -1,7 +1,9 @@
-// This is forgot_password_page.dart
+// lib/forgot_password_page.dart
 
 import 'package:flutter/material.dart';
 import 'password_updated_page.dart';
+import 'user_db.dart';
+import 'user_model.dart';
 
 class ForgotPasswordPage extends StatefulWidget {
   const ForgotPasswordPage({super.key});
@@ -15,6 +17,8 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
   final TextEditingController _emailController = TextEditingController();
   final TextEditingController _newPasswordController = TextEditingController();
   final TextEditingController _confirmPasswordController = TextEditingController();
+
+  bool _saving = false;
 
   @override
   Widget build(BuildContext context) {
@@ -64,7 +68,7 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
                       return 'Email cannot be empty';
                     }
                     final emailRegex = RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w]{2,4}$');
-                    if (!emailRegex.hasMatch(value)) {
+                    if (!emailRegex.hasMatch(value.trim())) {
                       return 'Enter a valid email';
                     }
                     return null;
@@ -75,7 +79,7 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
                     if (value == null || value.isEmpty) {
                       return 'Password cannot be empty';
                     }
-                    if (value.length < 6) {
+                    if (value.trim().length < 6) {
                       return 'Password must be at least 6 characters';
                     }
                     return null;
@@ -86,7 +90,7 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
                     if (value == null || value.isEmpty) {
                       return 'Confirm your password';
                     }
-                    if (value != _newPasswordController.text) {
+                    if (value.trim() != _newPasswordController.text.trim()) {
                       return 'Passwords do not match';
                     }
                     return null;
@@ -94,45 +98,26 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
                   const SizedBox(height: 30),
 
                   Center(
-                    child: ElevatedButton(
-                      onPressed: () {
-                        if (_formKey.currentState!.validate()) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(
-                              content: Text(
-                                "Password updated successfully!",
-                                style: TextStyle(fontSize: 16),
+                    child: _saving
+                        ? const CircularProgressIndicator()
+                        : ElevatedButton(
+                            onPressed: _updatePassword,
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.black87,
+                              padding: const EdgeInsets.symmetric(horizontal: 50, vertical: 18),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(8),
                               ),
-                              backgroundColor: Colors.green,
-                              duration: Duration(milliseconds: 500),
                             ),
-                          );
-
-                          Future.delayed(const Duration(milliseconds: 500), () {
-                            Navigator.pushReplacement(
-                              // ignore: use_build_context_synchronously
-                              context,
-                              _smoothRoute(const PasswordUpdatedPage()),
-                            );
-                          });
-                        }
-                      },
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.black87,
-                        padding: const EdgeInsets.symmetric(horizontal: 50, vertical: 18),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                      ),
-                      child: const Text(
-                        "Update",
-                        style: TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.w600,
-                          color: Colors.white,
-                        ),
-                      ),
-                    ),
+                            child: const Text(
+                              "Update",
+                              style: TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.w600,
+                                color: Colors.white,
+                              ),
+                            ),
+                          ),
                   )
                 ],
               ),
@@ -173,6 +158,50 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
         ),
       ],
     );
+  }
+
+  Future<void> _updatePassword() async {
+    if (!_formKey.currentState!.validate()) return;
+
+    setState(() => _saving = true);
+
+    final email = _emailController.text.trim().toLowerCase();
+    final newPassword = _newPasswordController.text.trim();
+
+    try {
+      final User? user = await UserDB.instance.getUserByEmail(email);
+      if (user == null) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('No account found with this email'), backgroundColor: Colors.red),
+          );
+        }
+        return;
+      }
+
+      // create updated user object with same id
+      final updated = User(id: user.id, email: user.email, password: newPassword);
+      await UserDB.instance.updateUser(updated);
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Password updated successfully'), backgroundColor: Colors.green),
+        );
+
+        // navigate to PasswordUpdatedPage
+        await Future.delayed(const Duration(milliseconds: 400));
+        if (!mounted) return;
+        Navigator.pushReplacement(context, _smoothRoute(const PasswordUpdatedPage()));
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Failed to update password'), backgroundColor: Colors.red),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
   }
 
   Route _smoothRoute(Widget page) {

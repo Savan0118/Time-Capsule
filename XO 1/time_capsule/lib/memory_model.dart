@@ -1,19 +1,22 @@
+// lib/memory_model.dart
 import 'dart:convert';
 
 class Memory {
   int? id;
+  String? ownerEmail; // identifier: owner email
   String? title;
   String? note;
   String? mood;
-  /// Stored in DB column 'photoPath' as either:
-  /// - an empty string
-  /// - a single file path string (legacy)
-  /// - a JSON array string like '["path1","path2"]' (new)
+  /// Stored in DB column 'photoPath' as:
+  /// - '' for none
+  /// - single path string (legacy)
+  /// - JSON array string like '["path1","path2"]'
   List<String>? photoPaths;
   String? createdAt;
 
   Memory({
     this.id,
+    this.ownerEmail,
     this.title,
     this.note,
     this.mood,
@@ -28,6 +31,7 @@ class Memory {
     final photoField = (photoPaths == null || photoPaths!.isEmpty) ? '' : jsonEncode(photoPaths);
     return {
       if (id != null) 'id': id,
+      if (ownerEmail != null) 'owner_email': ownerEmail,
       'title': title ?? '',
       'note': note ?? '',
       'mood': mood ?? '',
@@ -45,11 +49,9 @@ class Memory {
         if (decoded is List) {
           parsed = decoded.map((e) => e.toString()).toList();
         } else {
-          // legacy single-path string
           parsed = [rawPhoto];
         }
       } catch (_) {
-        // not JSON — treat as single path
         parsed = [rawPhoto];
       }
     } else {
@@ -58,6 +60,7 @@ class Memory {
 
     return Memory(
       id: map['id'] as int?,
+      ownerEmail: map.containsKey('owner_email') ? (map['owner_email'] as String?) : null,
       title: map['title'] as String?,
       note: map['note'] as String?,
       mood: map['mood'] as String?,

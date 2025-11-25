@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'db_helper.dart';
 import 'memory_model.dart';
+import 'session_manager.dart';
 
 class SearchPage extends StatefulWidget {
   const SearchPage({super.key});
@@ -27,16 +28,27 @@ class _SearchPageState extends State<SearchPage> {
     'neutral': 0xFFD7CCC8,
   };
 
+  String? loggedEmail;
+
   @override
   void initState() {
     super.initState();
-    _loadMemories();
+    _initLoad();
+  }
+
+  Future<void> _initLoad() async {
+    loggedEmail = await SessionManager.getEmail();
+    await _loadMemories();
   }
 
   Future<void> _loadMemories() async {
+    if (loggedEmail == null) return;
+
     setState(() => _loading = true);
+
     try {
-      _memories = await _db.getAllMemories();
+      final all = await _db.getAllMemories();
+      _memories = all.where((m) => m.ownerEmail == loggedEmail).toList();
     } catch (e) {
       _memories = [];
     } finally {
@@ -56,7 +68,7 @@ class _SearchPageState extends State<SearchPage> {
   int _colorForMemory(Memory m) {
     final mood = (m.mood ?? '').toLowerCase();
     if (_moodColors.containsKey(mood)) return _moodColors[mood]!;
-    // fallback: create a pseudo-random but deterministic color based on id/title
+
     final seed = (m.id ?? 0) ^ (m.title?.hashCode ?? 0);
     final rgb = (seed * 2654435761) & 0x00FFFFFF;
     return 0xFF000000 | rgb;
@@ -71,6 +83,7 @@ class _SearchPageState extends State<SearchPage> {
   @override
   Widget build(BuildContext context) {
     final search = query.toLowerCase();
+
     final filtered = _memories.where((m) {
       final title = (m.title ?? '').toLowerCase();
       final date = _formatDate(m.createdAt).toLowerCase();
@@ -100,7 +113,7 @@ class _SearchPageState extends State<SearchPage> {
             onChanged: (v) => setState(() => query = v),
             decoration: InputDecoration(
               prefixIcon: const Icon(Icons.search, color: Colors.black),
-              hintText: "Search by title or date (e.g. 2025-03-12)",
+              hintText: "Search by title or date",
               filled: true,
               fillColor: const Color(0xFFDCDCDC),
               border: OutlineInputBorder(
@@ -156,15 +169,7 @@ class _SearchPageState extends State<SearchPage> {
                                   children: [
                                     IconButton(
                                       icon: const Icon(Icons.edit, color: Colors.black87),
-                                      onPressed: () async {
-                                        // TODO: replace with your edit page
-                                        // example:
-                                        // final updated = await Navigator.push(
-                                        //   context,
-                                        //   MaterialPageRoute(builder: (_) => EditMemoryPage(memory: m)),
-                                        // );
-                                        // if (updated == true) await _loadMemories();
-                                      },
+                                      onPressed: () {},
                                     ),
                                     IconButton(
                                       icon: const Icon(Icons.delete, color: Colors.black87),

@@ -15,7 +15,7 @@ dependencies:
   path: ^1.8.3
   image_picker: ^0.8.7+6  # if not already present
   intl: ^0.18.1 
-  shared_preferences: ^2.1.1
+  shared_preferences: ^2.2.2
 
 
 

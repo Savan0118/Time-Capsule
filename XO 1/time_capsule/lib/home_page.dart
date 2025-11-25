@@ -6,6 +6,7 @@ import 'db_helper.dart';
 import 'memory_model.dart';
 import 'settings_page.dart';
 import 'search_page.dart';
+import 'session_manager.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -18,6 +19,7 @@ class _HomePageState extends State<HomePage> {
   final DBHelper _db = DBHelper();
   List<Memory> _memories = [];
   bool _loading = true;
+  String? _userEmail;
 
   @override
   void initState() {
@@ -27,7 +29,22 @@ class _HomePageState extends State<HomePage> {
 
   Future<void> _loadMemories() async {
     setState(() => _loading = true);
-    final data = await _db.getAllMemories();
+
+    // Get logged-in user email
+    _userEmail = await SessionManager.getEmail();
+
+    if (_userEmail == null) {
+      // No session → should not display memories
+      setState(() {
+        _memories = [];
+        _loading = false;
+      });
+      return;
+    }
+
+    // Load only this user's memories
+    final data = await _db.getAllMemoriesForEmail(_userEmail!);
+
     setState(() {
       _memories = data;
       _loading = false;
@@ -35,6 +52,14 @@ class _HomePageState extends State<HomePage> {
   }
 
   Future<void> _deleteMemory(Memory m) async {
+    // Extra safety: only delete if owner matches
+    if (m.ownerEmail != _userEmail) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Unauthorized action"), backgroundColor: Colors.red),
+      );
+      return;
+    }
+
     final confirm = await showDialog<bool>(
       context: context,
       builder: (_) => AlertDialog(
@@ -51,6 +76,7 @@ class _HomePageState extends State<HomePage> {
 
     await _db.deleteMemory(m.id!);
 
+    // Delete images from device
     if (m.photoPaths != null) {
       for (final p in m.photoPaths!) {
         try {
@@ -97,9 +123,11 @@ class _HomePageState extends State<HomePage> {
               : Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text(
-                      "Welcome Back!",
-                      style: TextStyle(fontSize: 26, fontWeight: FontWeight.bold),
+                    Text(
+                      _userEmail != null
+                          ? "Welcome Back, ${_userEmail!}"
+                          : "Welcome!",
+                      style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
                     ),
 
                     const SizedBox(height: 20),
@@ -196,27 +224,26 @@ class _HomePageState extends State<HomePage> {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          // Search button (opens SearchPage)
+          // Search button
           GestureDetector(
             onTap: () async {
-              // pass current memories to SearchPage if you want, or let SearchPage load DB itself
               await Navigator.push(context, MaterialPageRoute(builder: (_) => const SearchPage()));
               await _loadMemories();
             },
             child: const Icon(Icons.search, size: 32),
           ),
 
-          // Create button (named route '/create' expected to be registered in main.dart)
+          // Create memory
           GestureDetector(
             onTap: () => Navigator.pushNamed(context, "/create"),
             child: const Icon(Icons.add_box_outlined, size: 32),
           ),
 
-          // Settings button (opens SettingsPage)
+          // Settings
           GestureDetector(
             onTap: () async {
               await Navigator.push(context, MaterialPageRoute(builder: (_) => const SettingsPage()));
-              await _loadMemories(); 
+              await _loadMemories();
             },
             child: const Icon(Icons.settings_outlined, size: 32),
           ),

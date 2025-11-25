@@ -59,7 +59,7 @@ class _RegisterPageState extends State<RegisterPage> {
                       return 'Email cannot be empty';
                     }
                     final emailRegex = RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w]{2,4}$');
-                    if (!emailRegex.hasMatch(value)) {
+                    if (!emailRegex.hasMatch(value.trim())) {
                       return 'Enter a valid email';
                     }
                     return null;
@@ -69,7 +69,7 @@ class _RegisterPageState extends State<RegisterPage> {
                     if (value == null || value.isEmpty) {
                       return 'Password cannot be empty';
                     }
-                    if (value.length < 6) {
+                    if (value.trim().length < 6) {
                       return 'Password must be at least 6 characters';
                     }
                     return null;
@@ -79,7 +79,7 @@ class _RegisterPageState extends State<RegisterPage> {
                     if (value == null || value.isEmpty) {
                       return 'Confirm your password';
                     }
-                    if (value != _passwordController.text) {
+                    if (value.trim() != _passwordController.text.trim()) {
                       return 'Passwords do not match';
                     }
                     return null;
@@ -93,16 +93,19 @@ class _RegisterPageState extends State<RegisterPage> {
 
                           setState(() => _saving = true);
 
-                          final email = _emailController.text.trim();
-                          final password = _passwordController.text;
+                          // sanitize inputs
+                          final email = _emailController.text.trim().toLowerCase();
+                          final password = _passwordController.text.trim();
 
                           try {
                             // check if email exists
                             final existing = await UserDB.instance.getUserByEmail(email);
                             if (existing != null) {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(content: Text('Email already registered'), backgroundColor: Colors.red),
-                              );
+                              if (mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(content: Text('Email already registered'), backgroundColor: Colors.red),
+                                );
+                              }
                               setState(() => _saving = false);
                               return;
                             }
@@ -110,9 +113,11 @@ class _RegisterPageState extends State<RegisterPage> {
                             final user = User(email: email, password: password);
                             await UserDB.instance.createUser(user);
 
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(content: Text('Account created successfully! Please login.'), backgroundColor: Colors.green),
-                            );
+                            if (mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(content: Text('Account created successfully! Please login.'), backgroundColor: Colors.green),
+                              );
+                            }
 
                             // small delay so user sees the snackbar
                             await Future.delayed(const Duration(milliseconds: 600));
@@ -120,9 +125,11 @@ class _RegisterPageState extends State<RegisterPage> {
 
                             Navigator.pushReplacement(context, _smoothRoute(const SignInPage()));
                           } catch (e) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(content: Text('Failed to create account'), backgroundColor: Colors.red),
-                            );
+                            if (mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(content: Text('Failed to create account'), backgroundColor: Colors.red),
+                              );
+                            }
                           } finally {
                             if (mounted) setState(() => _saving = false);
                           }
@@ -141,10 +148,7 @@ class _RegisterPageState extends State<RegisterPage> {
                   const SizedBox(height: 15),
 
                   _buildButton("Login", () {
-                    Navigator.pushReplacement(
-                      context,
-                      _smoothRoute(const SignInPage()),
-                    );
+                    Navigator.pushReplacement(context, _smoothRoute(const SignInPage()));
                   }),
                 ],
               ),
@@ -159,13 +163,7 @@ class _RegisterPageState extends State<RegisterPage> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          label,
-          style: const TextStyle(
-            fontSize: 18,
-            fontWeight: FontWeight.w600,
-          ),
-        ),
+        Text(label, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
         const SizedBox(height: 8),
         TextFormField(
           controller: controller,
@@ -174,10 +172,7 @@ class _RegisterPageState extends State<RegisterPage> {
           decoration: InputDecoration(
             filled: true,
             fillColor: const Color(0xFFDCDCDC),
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: BorderSide.none,
-            ),
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
             contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
           ),
         ),
@@ -193,9 +188,7 @@ class _RegisterPageState extends State<RegisterPage> {
         foregroundColor: Colors.white,
         padding: const EdgeInsets.symmetric(horizontal: 60, vertical: 18),
         textStyle: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(12),
-        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         elevation: 6,
         shadowColor: Colors.black45,
       ),
@@ -208,15 +201,7 @@ class _RegisterPageState extends State<RegisterPage> {
       transitionDuration: const Duration(milliseconds: 400),
       pageBuilder: (_, __, ___) => page,
       transitionsBuilder: (_, animation, __, child) {
-        return FadeTransition(
-          opacity: animation,
-          child: ScaleTransition(
-            scale: Tween<double>(begin: 0.95, end: 1.0).animate(
-              CurvedAnimation(parent: animation, curve: Curves.easeOut),
-            ),
-            child: child,
-          ),
-        );
+        return FadeTransition(opacity: animation, child: ScaleTransition(scale: Tween<double>(begin: 0.95, end: 1.0).animate(CurvedAnimation(parent: animation, curve: Curves.easeOut)), child: child));
       },
     );
   }

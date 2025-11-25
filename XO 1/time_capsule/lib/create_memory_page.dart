@@ -1,3 +1,5 @@
+// lib/create_memory_page.dart
+
 import 'dart:io';
 import 'dart:typed_data';
 import 'dart:math';
@@ -11,6 +13,7 @@ import 'package:path/path.dart' as p;
 import 'db_helper.dart';
 import 'memory_model.dart';
 import 'mood_themes.dart';
+import 'session_manager.dart';
 
 class CreateMemoryPage extends StatefulWidget {
   final String mood;
@@ -437,6 +440,16 @@ class _CreateMemoryPageState extends State<CreateMemoryPage> {
     setState(() => _saving = true);
 
     try {
+      // Ensure user is logged in and get owner email
+      final ownerEmail = await SessionManager.getEmail();
+      if (ownerEmail == null) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Please sign in to save memory')));
+        }
+        setState(() => _saving = false);
+        return;
+      }
+
       List<String>? savedImagePaths;
       if (_selectedImages.isNotEmpty) {
         savedImagePaths = await _writeSelectedImagesToFiles();
@@ -447,6 +460,7 @@ class _CreateMemoryPageState extends State<CreateMemoryPage> {
       final createdAtStr = DateFormat('yyyy-MM-dd HH:mm:ss').format(dateToSave);
 
       final memory = Memory(
+        ownerEmail: ownerEmail,
         title: title,
         note: note,
         mood: widget.mood,
