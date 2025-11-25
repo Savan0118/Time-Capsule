@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:intl/intl.dart';
 import 'settings_page.dart';
+// ignore: unnecessary_import
 import 'dart:typed_data';
 import 'package:image_picker/image_picker.dart';
 
@@ -271,9 +272,10 @@ class _ProfilePageState extends State<ProfilePage> {
 
   Future<void> _pickImage(ImageSource source) async {
     try {
-      final XFile? picked;
+      // Use a single straightforward call but keep web/mobile handling safe.
+      XFile? picked;
       if (kIsWeb) {
-        // web: preferredCameraDevice not supported reliably; use simple call
+        // On web, preferredCameraDevice isn't reliable; use basic call
         picked = await _picker.pickImage(
           source: source,
           maxWidth: 1024,
@@ -281,7 +283,8 @@ class _ProfilePageState extends State<ProfilePage> {
           imageQuality: 85,
         );
       } else {
-        // mobile/desktop: request camera when source is camera
+        // On mobile/desktop, request camera explicitly when source == camera.
+        // preferredCameraDevice works on mobile.
         picked = await _picker.pickImage(
           source: source,
           maxWidth: 1024,
@@ -293,9 +296,11 @@ class _ProfilePageState extends State<ProfilePage> {
 
       if (picked != null) {
         final bytes = await picked.readAsBytes();
-        setState(() {
-          _selectedImageBytes = bytes;
-        });
+        if (mounted) {
+          setState(() {
+            _selectedImageBytes = bytes;
+          });
+        }
       }
     } catch (e) {
       // show brief feedback on failure
@@ -318,6 +323,7 @@ class _ProfilePageState extends State<ProfilePage> {
               title: const Text('Choose from gallery'),
               onTap: () {
                 Navigator.of(ctx).pop();
+                // explicitly open gallery
                 _pickImage(ImageSource.gallery);
               },
             ),
@@ -326,6 +332,7 @@ class _ProfilePageState extends State<ProfilePage> {
               title: const Text('Take a photo'),
               onTap: () {
                 Navigator.of(ctx).pop();
+                // explicitly open camera (mobile will open native camera app)
                 _pickImage(ImageSource.camera);
               },
             ),
@@ -407,6 +414,7 @@ class _ProfilePageState extends State<ProfilePage> {
                           color: Colors.white,
                           boxShadow: [
                             BoxShadow(
+                              // ignore: deprecated_member_use
                               color: Colors.black.withOpacity(0.08),
                               blurRadius: 6,
                               offset: const Offset(0, 2),
