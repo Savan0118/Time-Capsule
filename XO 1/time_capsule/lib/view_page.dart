@@ -5,9 +5,6 @@ import 'package:intl/intl.dart';
 
 import 'memory_model.dart';
 
-/// ViewPage displays a single Memory in full detail.
-/// Usage:
-/// Navigator.push(context, MaterialPageRoute(builder: (_) => ViewPage(memory: memory)));
 class ViewPage extends StatefulWidget {
   final Memory memory;
   const ViewPage({super.key, required this.memory});
@@ -32,7 +29,6 @@ class _ViewPageState extends State<ViewPage> {
   List<String> get _images {
     final p = widget.memory.photoPaths;
     if (p == null || p.isEmpty) {
-      // fallback sample image path (use the uploaded image path as requested)
       return ['/mnt/data/75d62128-c09c-412d-93d9-5dfef24686e3.png'];
     }
     return p;
@@ -40,8 +36,14 @@ class _ViewPageState extends State<ViewPage> {
 
   Widget _buildImageViewer() {
     final imgs = _images;
-    return SizedBox(
-      height: 220,
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+      height: 240,
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(12),
+        color: Colors.white,
+      ),
+      clipBehavior: Clip.hardEdge,
       child: Stack(
         children: [
           PageView.builder(
@@ -49,7 +51,7 @@ class _ViewPageState extends State<ViewPage> {
             onPageChanged: (i) => setState(() => _currentImage = i),
             itemBuilder: (context, i) {
               final path = imgs[i];
-              if (path.startsWith('http') || path.startsWith('https')) {
+              if (path.startsWith('http')) {
                 return Image.network(path, fit: BoxFit.cover, width: double.infinity);
               }
               final f = File(path);
@@ -62,26 +64,22 @@ class _ViewPageState extends State<ViewPage> {
               );
             },
           ),
-          Positioned(
-            left: 12,
-            top: 12,
-            child: Material(
-              color: Colors.white70,
-              shape: const CircleBorder(),
-              child: IconButton(
-                icon: const Icon(Icons.arrow_back),
-                onPressed: () => Navigator.pop(context),
-              ),
-            ),
-          ),
+
+          // Page counter
           if (imgs.length > 1)
             Positioned(
               bottom: 8,
               right: 12,
               child: Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                decoration: BoxDecoration(color: Colors.black38, borderRadius: BorderRadius.circular(12)),
-                child: Text('${_currentImage + 1}/${imgs.length}', style: const TextStyle(color: Colors.white, fontSize: 12)),
+                decoration: BoxDecoration(
+                  color: Colors.black38,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Text(
+                  '${_currentImage + 1}/${imgs.length}',
+                  style: const TextStyle(color: Colors.white, fontSize: 12),
+                ),
               ),
             ),
         ],
@@ -97,28 +95,61 @@ class _ViewPageState extends State<ViewPage> {
 
     return Scaffold(
       backgroundColor: const Color(0xFFDDF3F9),
+
+      // ✔ AppBar on top
+      appBar: AppBar(
+        backgroundColor: const Color(0xFFDDF3F9),
+        elevation: 0,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back, color: Colors.black),
+          onPressed: () => Navigator.pop(context),
+        ),
+        centerTitle: true,
+        title: const Text(
+          "Memory",
+          style: TextStyle(color: Colors.black),
+        ),
+      ),
+
       body: SafeArea(
         child: Column(
           children: [
+            // ✔ Now image is BELOW the app bar
             _buildImageViewer(),
+
             const SizedBox(height: 12),
+
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 18),
               child: Column(
                 children: [
-                  Text(title, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold), textAlign: TextAlign.center),
+                  Text(
+                    title,
+                    style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                    textAlign: TextAlign.center,
+                  ),
                   const SizedBox(height: 8),
                   Container(
                     width: double.infinity,
                     padding: const EdgeInsets.symmetric(vertical: 8),
-                    decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(8)),
-                    child: Text(dateStr, textAlign: TextAlign.center, style: const TextStyle(color: Colors.black54)),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Text(
+                      dateStr,
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(color: Colors.black54),
+                    ),
                   ),
                   const SizedBox(height: 12),
                   Container(
                     width: double.infinity,
                     padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(8)),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(8),
+                    ),
                     child: Text(
                       note.isEmpty ? 'No additional notes.' : note,
                       style: const TextStyle(fontSize: 14, height: 1.4),

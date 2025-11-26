@@ -1,5 +1,7 @@
 // lib/db_helper.dart
 
+// ignore_for_file: unnecessary_cast
+
 import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/foundation.dart';

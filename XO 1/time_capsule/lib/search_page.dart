@@ -1,4 +1,4 @@
-// search_page.dart
+// lib/search_page.dart
 
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
@@ -42,17 +42,26 @@ class _SearchPageState extends State<SearchPage> {
   }
 
   Future<void> _loadMemories() async {
-    if (loggedEmail == null) return;
-
     setState(() => _loading = true);
 
     try {
+      if (loggedEmail == null) {
+        loggedEmail = await SessionManager.getEmail();
+        if (loggedEmail == null) {
+          setState(() {
+            _memories = [];
+            _loading = false;
+          });
+          return;
+        }
+      }
+
       final all = await _db.getAllMemories();
       _memories = all.where((m) => m.ownerEmail == loggedEmail).toList();
     } catch (e) {
       _memories = [];
     } finally {
-      setState(() => _loading = false);
+      if (mounted) setState(() => _loading = false);
     }
   }
 
@@ -77,7 +86,25 @@ class _SearchPageState extends State<SearchPage> {
   Future<void> _deleteMemory(int? id) async {
     if (id == null) return;
     await _db.deleteMemory(id);
-    await _loadMemories();
+    // remove locally for instant UI feedback
+    setState(() {
+      _memories.removeWhere((m) => m.id == id);
+    });
+  }
+
+  /// Helper to apply an updated memory returned from a pushed route.
+  /// If the memory already exists in the current list (by id) it will be replaced,
+  /// otherwise it will be inserted at the top.
+  void _applyReturnedMemory(Memory returned) {
+    if (!mounted) return;
+    final idx = _memories.indexWhere((m) => m.id == returned.id);
+    setState(() {
+      if (idx >= 0) {
+        _memories[idx] = returned;
+      } else {
+        _memories.insert(0, returned);
+      }
+    });
   }
 
   @override
@@ -153,6 +180,17 @@ class _SearchPageState extends State<SearchPage> {
                               ),
                               elevation: 5,
                               child: ListTile(
+                                onTap: () async {
+                                  // Open view page; if it returns a Memory, apply it instantly.
+                                  final res = await Navigator.pushNamed(context, "/view", arguments: m);
+
+                                  if (res is Memory) {
+                                    _applyReturnedMemory(res);
+                                  } else if (res == true) {
+                                    // If view signalled changes in a boolean manner, reload
+                                    await _loadMemories();
+                                  }
+                                },
                                 contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 15),
                                 title: Text(
                                   m.title ?? '',
@@ -169,7 +207,15 @@ class _SearchPageState extends State<SearchPage> {
                                   children: [
                                     IconButton(
                                       icon: const Icon(Icons.edit, color: Colors.black87),
-                                      onPressed: () {},
+                                      onPressed: () async {
+                                        // Open edit page and apply returned Memory (if any) immediately
+                                        final res = await Navigator.pushNamed(context, "/edit", arguments: m);
+                                        if (res is Memory) {
+                                          _applyReturnedMemory(res);
+                                        } else if (res == true) {
+                                          await _loadMemories();
+                                        }
+                                      },
                                     ),
                                     IconButton(
                                       icon: const Icon(Icons.delete, color: Colors.black87),

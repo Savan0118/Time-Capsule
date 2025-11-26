@@ -30,11 +30,9 @@ class _HomePageState extends State<HomePage> {
   Future<void> _loadMemories() async {
     setState(() => _loading = true);
 
-    // Get logged-in user email
     _userEmail = await SessionManager.getEmail();
 
     if (_userEmail == null) {
-      // No session → should not display memories
       setState(() {
         _memories = [];
         _loading = false;
@@ -42,7 +40,6 @@ class _HomePageState extends State<HomePage> {
       return;
     }
 
-    // Load only this user's memories
     final data = await _db.getAllMemoriesForEmail(_userEmail!);
 
     setState(() {
@@ -52,10 +49,12 @@ class _HomePageState extends State<HomePage> {
   }
 
   Future<void> _deleteMemory(Memory m) async {
-    // Extra safety: only delete if owner matches
     if (m.ownerEmail != _userEmail) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Unauthorized action"), backgroundColor: Colors.red),
+        const SnackBar(
+          content: Text("Unauthorized action"),
+          backgroundColor: Colors.red,
+        ),
       );
       return;
     }
@@ -76,7 +75,6 @@ class _HomePageState extends State<HomePage> {
 
     await _db.deleteMemory(m.id!);
 
-    // Delete images from device
     if (m.photoPaths != null) {
       for (final p in m.photoPaths!) {
         try {
@@ -124,9 +122,7 @@ class _HomePageState extends State<HomePage> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      _userEmail != null
-                          ? "Welcome Back, ${_userEmail!}"
-                          : "Welcome!",
+                      _userEmail != null ? "Welcome Back, ${_userEmail!}" : "Welcome!",
                       style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
                     ),
 
@@ -169,7 +165,7 @@ class _HomePageState extends State<HomePage> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Title + Icons Row
+              // TITLE + EDIT + DELETE
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
@@ -181,18 +177,19 @@ class _HomePageState extends State<HomePage> {
                       style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
                     ),
                   ),
+
                   Row(
                     children: [
                       GestureDetector(
                         onTap: () {
                           Navigator.pushNamed(context, "/view", arguments: memory);
                         },
-                        child: const Icon(Icons.edit, size: 18),
+                        child: const Icon(Icons.edit, size: 26), // ★ BIGGER ICON
                       ),
-                      const SizedBox(width: 12),
+                      const SizedBox(width: 20),
                       GestureDetector(
                         onTap: () => _deleteMemory(memory),
-                        child: const Icon(Icons.delete_outline, size: 18),
+                        child: const Icon(Icons.delete_outline, size: 26), // ★ BIGGER ICON
                       ),
                     ],
                   ),
@@ -201,7 +198,6 @@ class _HomePageState extends State<HomePage> {
 
               const SizedBox(height: 6),
 
-              // Date
               Text(
                 _formatDate(memory.createdAt),
                 style: const TextStyle(
@@ -224,7 +220,6 @@ class _HomePageState extends State<HomePage> {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          // Search button
           GestureDetector(
             onTap: () async {
               await Navigator.push(context, MaterialPageRoute(builder: (_) => const SearchPage()));
@@ -233,13 +228,11 @@ class _HomePageState extends State<HomePage> {
             child: const Icon(Icons.search, size: 32),
           ),
 
-          // Create memory
           GestureDetector(
             onTap: () => Navigator.pushNamed(context, "/create"),
             child: const Icon(Icons.add_box_outlined, size: 32),
           ),
 
-          // Settings
           GestureDetector(
             onTap: () async {
               await Navigator.push(context, MaterialPageRoute(builder: (_) => const SettingsPage()));
