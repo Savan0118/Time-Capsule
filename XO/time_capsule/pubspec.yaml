@@ -1,0 +1,33 @@
+name: time_capsule
+description: "A new Flutter project."
+publish_to: 'none'
+version: 0.1.0
+
+environment:
+  sdk: ^3.9.0
+
+dependencies:
+  flutter:
+    sdk: flutter
+  
+  sqflite: ^2.2.8+5
+  path_provider: ^2.0.15
+  path: ^1.8.3
+  image_picker: ^0.8.7+6  # if not already present
+  intl: ^0.18.1 
+
+
+
+
+
+
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^5.0.0
+
+
+
+flutter:
+  uses-material-design: true

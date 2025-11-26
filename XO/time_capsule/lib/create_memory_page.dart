@@ -1,5 +1,3 @@
-// lib/create_memory_page.dart
-
 import 'dart:io';
 import 'dart:typed_data';
 import 'dart:math';
@@ -13,7 +11,6 @@ import 'package:path/path.dart' as p;
 import 'db_helper.dart';
 import 'memory_model.dart';
 import 'mood_themes.dart';
-import 'session_manager.dart';
 
 class CreateMemoryPage extends StatefulWidget {
   final String mood;
@@ -61,7 +58,7 @@ class _CreateMemoryPageState extends State<CreateMemoryPage> {
         data: Theme.of(context).copyWith(
           colorScheme: const ColorScheme.light(
             primary: Color(0xFF8B6B4A),
-            onPrimary: Color.fromARGB(255, 124, 73, 73),
+            onPrimary: Colors.white,
             onSurface: Colors.black,
           ),
         ),
@@ -427,7 +424,6 @@ class _CreateMemoryPageState extends State<CreateMemoryPage> {
     return paths;
   }
 
-  // Updated/safe save handler with detailed logging and user feedback.
   Future<void> _saveTitleDateAndImagesToDb() async {
     final title = _titleController.text.trim();
     final note = _textController.text.trim();
@@ -441,32 +437,16 @@ class _CreateMemoryPageState extends State<CreateMemoryPage> {
     setState(() => _saving = true);
 
     try {
-      // Ensure user is logged in and get owner email
-      final ownerEmail = await SessionManager.getEmail();
-      if (ownerEmail == null) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Please sign in to save memory')));
-        }
-        return;
-      }
-
-      List<String> savedImagePaths = <String>[];
+      List<String>? savedImagePaths;
       if (_selectedImages.isNotEmpty) {
-        try {
-          savedImagePaths = await _writeSelectedImagesToFiles();
-        } catch (e, st) {
-          // If writing images fails, still continue but log and inform user
-          debugPrint('Error writing images to files: $e');
-          debugPrint('$st');
-          if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Failed to save images; memory will still be saved without images')));
-          savedImagePaths = <String>[];
-        }
+        savedImagePaths = await _writeSelectedImagesToFiles();
+      } else {
+        savedImagePaths = <String>[];
       }
 
       final createdAtStr = DateFormat('yyyy-MM-dd HH:mm:ss').format(dateToSave);
 
       final memory = Memory(
-        ownerEmail: ownerEmail,
         title: title,
         note: note,
         mood: widget.mood,
@@ -475,55 +455,24 @@ class _CreateMemoryPageState extends State<CreateMemoryPage> {
       );
 
       final db = DBHelper();
+      await db.insertMemory(memory);
 
-      // Attempt insert and capture result; be tolerant of DB helper returning void / int / null
-      dynamic insertResult;
-      try {
-        insertResult = await db.insertMemory(memory);
-      } catch (e, st) {
-        debugPrint('DB insertMemory threw: $e');
-        debugPrint('$st');
-        rethrow;
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Memory saved')));
+        _titleController.clear();
+        _textController.clear();
+        setState(() {
+          _selectedDate = null;
+          _selectedImages.clear();
+          _currentPage = 0;
+          if (_page_controller_or_init().hasClients) _page_controller_or_init().jumpToPage(0);
+        });
+        Navigator.pop(context);
       }
-
-      // Interpret insertResult for feedback
-      bool success = false;
-      if (insertResult == null) {
-        // Some implementations return null on success; assume success unless an exception was thrown
-        success = true;
-      } else if (insertResult is int) {
-        success = insertResult > 0 || insertResult >= 0;
-      } else if (insertResult is bool) {
-        success = insertResult;
-      } else {
-        // unexpected return type, but no exception -> consider success
-        success = true;
-      }
-
-      if (success) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Memory saved')));
-          _titleController.clear();
-          _textController.clear();
-          setState(() {
-            _selectedDate = null;
-            _selectedImages.clear();
-            _currentPage = 0;
-            if (_page_controller_or_init().hasClients) _page_controller_or_init().jumpToPage(0);
-          });
-          Navigator.pop(context, true);
-        }
-      } else {
-        // Not successful according to return value
-        if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Failed to save memory (unknown error)')));
-      }
-    } catch (e, st) {
-      // Show more informative error to help debugging
-      debugPrint('Error saving memory: $e');
-      debugPrint('$st');
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed to save memory: ${e.toString()}')));
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Failed to save memory')));
     } finally {
-      if (mounted) setState(() => _saving = false);
+      setState(() => _saving = false);
     }
   }
 
